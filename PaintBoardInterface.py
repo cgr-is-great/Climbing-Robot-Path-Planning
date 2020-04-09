@@ -12,9 +12,9 @@ WIDGET_MIN_HEIGHT = 25
 fig_path_rec_expand = ".\\map_fig\\Expand\\rec\\"                       # 膨胀后矩形障碍物轮廓图片保存路径
 fig_path_lines_expand = ".\\map_fig\\Expand\\lines\\"                   # 膨胀后折线障碍物轮廓图片保存路径
 fig_path_lines_rec_expand = ".\\map_fig\\Expand\\lines_rec\\"           # 膨胀后矩形+折线障碍物轮廓图片保存路径
-fig_path_rec_processed = ".\\map_fig\\processed\\rec\\"                 # 矩形障碍物处理后轮廓图片保存路径
-fig_path_lines_processed = ".\\map_fig\\processed\\lines\\"             # 折线障碍物处理后轮廓图片保存路径
-fig_path_lines_rec_processed = ".\\map_fig\\processed\\lines_rec\\"     # 矩形+折线障碍物处理后轮廓图片保存路径
+fig_path_rec = ".\\map_fig\\No_Expand\\rec\\"                           # 未膨胀矩形障碍物轮廓图片保存路径
+fig_path_lines = ".\\map_fig\\No_Expand\\lines\\"                       # 未膨胀折线障碍物轮廓图片保存路径
+fig_path_lines_rec = ".\\map_fig\\No_Expand\\lines_rec\\"               # 未膨胀矩形+折线障碍物轮廓图片保存路径
 
 
 class PaintBoardInterface(QWidget):
@@ -38,14 +38,19 @@ class PaintBoardInterface(QWidget):
         self.robot_length = 0                                   # 机器人实际长度单位厘米
         self.robot_width = 0                                    # 机器人实际宽度单位厘米
         self.ratio = 0                                          # 一像素对应的厘米数
-        self.coefficient = 1.2                                  # 膨胀障碍物时的调节系数
+        self.coefficient = 1.3                                  # 膨胀障碍物时的调节系数
         self.width = 10                                         # 膨胀障碍物的宽度
         self.cells = 0                                          # 分割的单元总数
         self.finalpoints0 = []                                  # 矩形障碍物膨胀后的坐标列表
         self.finalpoints1 = []                                  # 折线障碍物膨胀后的坐标列表
+        self.erode_img = np.ones([BOARD_HEIGHT, BOARD_WIDTH])   # 地图0-1矩阵，0表示障碍物，1表示可通行
         self.separate_img = np.ones([BOARD_HEIGHT, BOARD_WIDTH])  # 分割单元后的地图矩阵
         self.shortest_path_node = []                            # 最短路径顺序
         self.centerx, self.centery = [], []                     # 每个单元的中心点横纵坐标列表
+        self.start_end_list = []                                # 各个单元内部起点终点坐标列表
+        self.path_list = []                                     # 全覆盖轨迹列表
+        self.r = 0                                              # 机器人转弯半径，单位厘米
+        self.a_star_list = []                                   # A* 单元之间切换轨迹列表
         self.__paintBoard.grabKeyboard()                        # 只有控件开始捕获键盘，控件的键盘事件才能收到消息
 
     def __InitView(self):
@@ -152,7 +157,7 @@ class PaintBoardInterface(QWidget):
         self.__btn_BCD.setMinimumHeight(WIDGET_MIN_HEIGHT)
         sub_layout.addWidget(self.__btn_BCD)
 
-        self.__btn_Generate_trajectory = QPushButton("生成轨迹")
+        self.__btn_Generate_trajectory = QPushButton("生成覆盖轨迹")
         self.__btn_Generate_trajectory.setParent(self)
         self.__btn_Generate_trajectory.clicked.connect(self.on_btn_Generate_trajectory)
         self.__btn_Generate_trajectory.setMinimumHeight(WIDGET_MIN_HEIGHT)
@@ -165,16 +170,20 @@ class PaintBoardInterface(QWidget):
         self.__btn_Inputwidth = QPushButton("机器人宽度(cm)")
         self.__btn_Inputwidth.clicked.connect(self.getWidth)
         self.line2 = QLineEdit()
+        self.__btn_Inputr = QPushButton("机器人转弯半径(cm)")
+        self.__btn_Inputr.clicked.connect(self.getr)
+        self.line3 = QLineEdit()
         self.__btn_Inputratio = QPushButton("比例(cm/pixel)")
         self.__btn_Inputratio.clicked.connect(self.getRatio)
-        self.line3 = QLineEdit()
+        self.line4 = QLineEdit()
         self.__btn_Inputcoefficient= QPushButton("膨胀调节系数")
         self.__btn_Inputcoefficient.clicked.connect(self.getcoefficient)
-        self.line4 = QLineEdit()
+        self.line5 = QLineEdit()
         flayout.addRow(self.__btn_Inputlength, self.line1)
         flayout.addRow(self.__btn_Inputwidth, self.line2)
-        flayout.addRow(self.__btn_Inputratio, self.line3)
-        flayout.addRow(self.__btn_Inputcoefficient, self.line4)
+        flayout.addRow(self.__btn_Inputr, self.line3)
+        flayout.addRow(self.__btn_Inputratio, self.line4)
+        flayout.addRow(self.__btn_Inputcoefficient, self.line5)
         fwg.setLayout(flayout)
         sub_layout.addWidget(fwg)
 
@@ -219,11 +228,18 @@ class PaintBoardInterface(QWidget):
                 self.line2.setText(str(self.robot_width))
         return self.robot_width
 
+    def getr(self):
+        if not self.__expandobstacles:
+            self.r, okPressed = QInputDialog.getDouble(self, "输入", "转弯半径(cm):")
+            if okPressed:
+                self.line3.setText(str(self.r))
+        return self.r
+
     def getRatio(self):
         if not self.__expandobstacles:
             self.ratio, okPressed = QInputDialog.getDouble(self, "输入", "比例(cm/pixel):")
             if okPressed:
-                self.line3.setText(str(self.ratio))
+                self.line4.setText(str(self.ratio))
         return self.ratio
 
     def getcoefficient(self):
@@ -233,7 +249,7 @@ class PaintBoardInterface(QWidget):
         if not self.__expandobstacles:
             self.coefficient, okPressed = QInputDialog.getDouble(self, "输入", "膨胀调节系数:")
             if okPressed:
-                self.line4.setText(str(self.coefficient))
+                self.line5.setText(str(self.coefficient))
         return self.coefficient
 
     def __fillLineStyle(self, comboBox):
@@ -702,21 +718,21 @@ class PaintBoardInterface(QWidget):
 
     def on_btn_bcd(self):
         """
-        单元分解
+        单元分解，膨胀机器人，不膨胀障碍物
         """
         if self.__paintBoard.IsRec() and not self.__paintBoard.IsLines():           # 如果只有矩形障碍
-            img = np.array(Image.open(fig_path_rec_expand + 'rec_expand.png'))
+            img = np.array(Image.open(fig_path_rec + 'rec.png'))
         elif not self.__paintBoard.IsRec() and self.__paintBoard.IsLines():         # 如果只有折线障碍
-            img = np.array(Image.open(fig_path_lines_expand + 'lines_expand.png'))
+            img = np.array(Image.open(fig_path_lines + 'lines.png'))
         elif self.__paintBoard.IsRec() and self.__paintBoard.IsLines():             # 如果两者都有
-            img = np.array(Image.open(fig_path_lines_rec_expand + 'lines_rec_expand.png'))
+            img = np.array(Image.open(fig_path_lines_rec + 'lines_rec.png'))
         else:                                                                       # 如果两者都没有
             QMessageBox.information(self, "错误提示", "请先使用折线或矩形框选障碍物！", QMessageBox.Yes)
             return
         if len(img.shape) > 2:
             img = img[:, :, 0]
-        erode_img = img / np.max(img)
-        separate_img, self.cells = Cellular_Decomposition.bcd(erode_img)
+        self.erode_img = img / np.max(img)
+        separate_img, self.cells = Cellular_Decomposition.bcd(self.erode_img)
         self.separate_img, self.centerx, self.centery, self.shortest_path_node = Cellular_Decomposition.map_process(separate_img, self.cells)
         print('Total cells: {}'.format(self.cells))
         Cellular_Decomposition.display_separate_map(self.separate_img, self.cells, self.centerx, self.centery, self.shortest_path_node)
@@ -725,7 +741,15 @@ class PaintBoardInterface(QWidget):
         """
         在每个单元内生成全覆盖轨迹
         """
-        # Generate_trajectory.find_point()
-        Generate_trajectory.find_point(self.separate_img, self.cells, self.shortest_path_node, self.robot_length, self.robot_width, self.ratio,
-                                       self.coefficient)
+        if self.robot_length == 0 or self.robot_width == 0 or self.ratio == 0:
+            QMessageBox.information(self, "错误提示", "请先设置机器人大小以及比例！", QMessageBox.Yes)
+            return
+        if self.robot_length < 0 or self.robot_width < 0:
+            QMessageBox.information(self, "错误提示", "机器人大小必须为正数！", QMessageBox.Yes)
+            return
+        if self.ratio < 0:
+            QMessageBox.information(self, "错误提示", "比例必须为正数！", QMessageBox.Yes)
+            return
+        self.start_end_list, self.path_list = Generate_trajectory.cover_map(self.erode_img, self.separate_img, self.cells, self.shortest_path_node, self.robot_length, self.robot_width, self.ratio,
+                                       self.coefficient, self.r)
         return

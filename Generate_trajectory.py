@@ -1,24 +1,16 @@
 import numpy as np
-from PIL import Image
 from matplotlib import pyplot as plt
-import Cellular_Decomposition
-import cv2
+import A_star
+import Add_speed
 
 BOARD_WIDTH = 1100                                                      # 画板长度
 BOARD_HEIGHT = 780                                                      # 画板宽度
 
 
-def deleteDuplicatedElementFromList(List):
-    resultList = []
-    for item in List:
-        if not item in resultList:
-            resultList.append(item)
-    return resultList
-
-
-def find_point(map_array, cells, path_node, length, width, ratio, coefficient):
+def cover_map(erode_img, map_array, cells, path_node, length, width, ratio, coefficient, r):
     """
-    寻找一幅图片中除了障碍物之外各个单元的四个角点并返回坐标
+    生成覆盖轨迹并返回轨迹坐标点
+    :param erode_img: 地图0-1矩阵，0表示障碍物，1表示可通行
     :param map_array: 要提取角点的图片
     :param cells: 单元总数目
     :param path_node: TSP确定的单元遍历顺序列表
@@ -45,11 +37,49 @@ def find_point(map_array, cells, path_node, length, width, ratio, coefficient):
         up_l = temp[i][np.argwhere(temp[i] == lef).min(axis=0)][0][0]
         up_r = temp[i][np.argwhere(temp[i] == righ).min(axis=0)][0][0]
 
-        d_l_point = [lef + distance, down_l - distance]
-        d_r_point = [righ - distance, down_r - distance]
-        u_l_point = [lef + distance, up_l + distance]
-        u_r_point = [righ - distance, up_r + distance]
+        d_l_point, d_r_point = [lef + distance, down_l - distance], [righ - distance, down_r - distance]
+        u_l_point, u_r_point = [lef + distance, up_l + distance], [righ - distance, up_r + distance]
 
+        if map_array[d_l_point[1], d_l_point[0]] == 0:
+            for j in range(0, down_l - distance):
+                if map_array[down_l - distance - j, lef + distance] == i + 1:
+                    d_l_point = [lef + distance, down_l - distance - j - distance * 2]
+                    while check_obstacle(map_array, 0, [d_l_point[1], d_l_point[0]], distance):
+                        d_l_point[1] -= distance
+                    break
+        else:
+            while check_obstacle(map_array, 0, [d_l_point[1], d_l_point[0]], distance):
+                d_l_point[1] -= distance
+        if map_array[d_r_point[1], d_r_point[0]] == 0:
+            for j in range(0, down_r - distance):
+                if map_array[down_r - distance - j, righ - distance] == i + 1:
+                    d_r_point = [righ - distance, down_r - distance - j - distance * 2]
+                    while check_obstacle(map_array, 1, [d_r_point[1], d_r_point[0]], distance):
+                        d_r_point[1] -= distance
+                    break
+        else:
+            while check_obstacle(map_array, 1, [d_r_point[1], d_r_point[0]], distance):
+                d_r_point[1] -= distance
+        if map_array[u_l_point[1], u_l_point[0]] == 0:
+            for j in range(up_l + distance, down_l - distance):
+                if map_array[j, lef + distance] == i + 1:
+                    u_l_point = [lef + distance, j + distance * 2]
+                    while check_obstacle(map_array, 2, [u_l_point[1], u_l_point[0]], distance):
+                        u_l_point[1] += distance
+                    break
+        else:
+            while check_obstacle(map_array, 2, [u_l_point[1], u_l_point[0]], distance):
+                u_l_point[1] += distance
+        if map_array[u_r_point[1], u_r_point[0]] == 0:
+            for j in range(up_r + distance, down_r - distance):
+                if map_array[j, righ - distance] == i + 1:
+                    u_r_point = [righ - distance, j + distance * 2]
+                    while check_obstacle(map_array, 3, [u_r_point[1], u_r_point[0]], distance):
+                        u_r_point[1] += distance
+                    break
+        else:
+            while check_obstacle(map_array, 3, [u_r_point[1], u_r_point[0]], distance):
+                u_r_point[1] += distance
         down_l_point.append(d_l_point)
         down_r_point.append(d_r_point)
         up_l_point.append(u_l_point)
@@ -82,7 +112,7 @@ def find_point(map_array, cells, path_node, length, width, ratio, coefficient):
         if i % 2 == 0:
             plt.scatter(start_end_list[i][0], BOARD_HEIGHT - 1 - start_end_list[i][1], marker='>', color='r')
         else:
-            plt.scatter(start_end_list[i][0], BOARD_HEIGHT - 1 - start_end_list[i][1], marker='<', color='k')
+            plt.scatter(start_end_list[i][0], BOARD_HEIGHT - 1 - start_end_list[i][1], marker='<', color='w')
     # 下一步即为在每一个单元内生成覆盖轨迹
     path_list, path_list_incell = [], []
     dis = int(coefficient * (min(length, width) / ratio))
@@ -104,23 +134,36 @@ def find_point(map_array, cells, path_node, length, width, ratio, coefficient):
             for m in range(n_hor + 1):
                 if m != 0:
                     y = y + ((-1) ** (corner_index % 2)) * dis                      # corner_index为0, 2时起点在左侧，y应该增加；反之在右侧，y应该减小
-                for k in range(n_ver + 1):
+                if y < min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0]):
+                    if abs(y - min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0])) > dis:
+                        break
+                    else:
+                        y = min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0])
+                elif y > max(down_r_point[path_node[i]][0], up_r_point[path_node[i]][0]):
+                    if abs(y - max(down_r_point[path_node[i]][0], up_r_point[path_node[i]][0])) > dis:
+                        break
+                    else:
+                        y = max(down_r_point[path_node[i]][0], up_r_point[path_node[i]][0])
+                for k in range(n_ver + 2):
                     if k != 0:
                         x = int(x + ((-1) ** (m + (1 - int(corner_index / 2)))) * dis)   # corner_index为0, 1时起点在下方，上下上下循环；反之在上方，下上下上循环
                     if x > max(down_l_point[path_node[i]][1], down_r_point[path_node[i]][1]):
                         x = max(down_l_point[path_node[i]][1], down_r_point[path_node[i]][1])
                     elif x < min(up_l_point[path_node[i]][1], up_r_point[path_node[i]][1]):
                         x = min(up_l_point[path_node[i]][1], up_r_point[path_node[i]][1])
-                    elif y < min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0]):
-                        y = min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0])
-                    elif y > max(down_r_point[path_node[i]][0], up_r_point[path_node[i]][0]):
-                        y = max(down_r_point[path_node[i]][0], up_r_point[path_node[i]][0])
                     if turn_flag == 0:
                         if map_array[x][y] == path_node[i] + 1:
-                            path_list_incell.append([y, x])
+                            if not check_obs_for_path_point(map_array, x, y, distance):
+                                path_list_incell.append([y, x])
+                            else:
+                                turn_flag = 1
                         else:
                             turn_flag = 1
+                            if path_list_incell:
+                                path_list_incell.pop()
                             break
+                        if k == n_ver + 1:
+                            turn_flag = 1
                     else:
                         if map_array[x][y] == path_node[i] + 1:
                             path_list_incell.append([y, x])
@@ -128,21 +171,21 @@ def find_point(map_array, cells, path_node, length, width, ratio, coefficient):
                         else:
                             turn_flag = 1
             path_list_incell.append(start_end_list[2 * i + 1])
+            path_list_incell = remove_duplicate(path_list_incell)
             path_list.append(path_list_incell)
-            show_path(path_list_incell)
             path_list_incell = []
         else:
             for m in range(n_ver + 1):
                 if m != 0:
                     x = x + ((-1) ** (1 - int(corner_index / 2))) * dis                  # corner_index为0, 1时起点在下方，x应该增加；反之在上方，x应该减小
-                for k in range(n_hor + 1):
-                    if k != 0:
-                        y = y + ((-1) ** (m + corner_index % 2)) * dis                       # corner_index为0, 2时起点在左侧，右左循环；反之在右侧，左右循环
                     if x > max(down_l_point[path_node[i]][1], down_r_point[path_node[i]][1]):
                         x = max(down_l_point[path_node[i]][1], down_r_point[path_node[i]][1])
                     elif x < min(up_l_point[path_node[i]][1], up_r_point[path_node[i]][1]):
                         x = min(up_l_point[path_node[i]][1], up_r_point[path_node[i]][1])
-                    elif y < min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0]):
+                for k in range(n_hor + 2):
+                    if k != 0:
+                        y = y + ((-1) ** (m + corner_index % 2)) * dis                       # corner_index为0, 2时起点在左侧，右左循环；反之在右侧，左右循环
+                    if y < min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0]):
                         y = min(up_l_point[path_node[i]][0], down_l_point[path_node[i]][0])
                     elif y > max(down_r_point[path_node[i]][0], up_r_point[path_node[i]][0]):
                         y = max(down_r_point[path_node[i]][0], up_r_point[path_node[i]][0])
@@ -151,7 +194,11 @@ def find_point(map_array, cells, path_node, length, width, ratio, coefficient):
                             path_list_incell.append([y, x])
                         else:
                             turn_flag = 1
+                            if path_list_incell:
+                                path_list_incell.pop()
                             break
+                        if k == n_hor + 1:
+                            turn_flag = 1
                     else:
                         if map_array[x][y] == path_node[i] + 1:
                             path_list_incell.append([y, x])
@@ -159,11 +206,15 @@ def find_point(map_array, cells, path_node, length, width, ratio, coefficient):
                         else:
                             turn_flag = 1
             path_list_incell.append(start_end_list[2 * i + 1])
+            path_list_incell = remove_duplicate(path_list_incell)
             path_list.append(path_list_incell)
-            show_path(path_list_incell)
             path_list_incell = []
+    a_star_list = A_star.a_star(erode_img, start_end_list)
+    # Add_speed.smooth_path(path_list, r)
+    final_list = A_star.final_list(path_list, a_star_list)
+    show_path(final_list)
     plt.show()
-    return
+    return start_end_list, path_list
 
 
 def cal_distance(point1, point2):
@@ -189,20 +240,80 @@ def cal_min_distance(point1, point2, point3, point4, point5, point6, point7, poi
 
 
 def show_path(path_list):
-    for i in range(len(path_list) - 1):
-        x = [path_list[i][0], path_list[i+1][0]]
-        y = [BOARD_HEIGHT - 1 - path_list[i][1], BOARD_HEIGHT - 1 - path_list[i+1][1]]
-        plt.scatter(x[0], y[0], marker='.', color='k')
-        plt.plot(x, y, 'k--')
-    plt.scatter(path_list[len(path_list) - 1][0], BOARD_HEIGHT - 1 - path_list[len(path_list) - 1][1], marker='.', color='k')
+    for i in range(len(path_list)):
+        for j in range(len(path_list[i]) - 1):
+            x = [path_list[i][j][0], path_list[i][j+1][0]]
+            y = [BOARD_HEIGHT - 1 - path_list[i][j][1], BOARD_HEIGHT - 1 - path_list[i][j+1][1]]
+            plt.scatter(x[0], y[0], s=25, marker='.', color='b')
+            plt.plot(x, y, 'b--')
+        plt.scatter(path_list[i][len(path_list[i]) - 1][0], BOARD_HEIGHT - 1 - path_list[i][len(path_list[i]) - 1][1], s=25, marker='.', color='b')
 
-# def find_point():
-#     img = cv2.imread('a.png')
-#     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-#     gray = np.float32(gray)    #将gray转化为float32的输入图像 blocksize=2，ksize=3
-#     dst = cv2.cornerHarris(gray,2,3,0.04)
-#     dst = cv2.dilate(dst,None)
-#     img[dst>0.01*dst.max()]=[0,0,255]
-#     cv2.imshow('cornerHarris',img)
-#     if cv2.waitKey(0) & 0xff == 27:
-#         cv2.destroyAllWindows()
+
+def remove_duplicate(List):
+    """
+    去除列表中的重复元素，返回无重复元素的新列表
+    """
+    result = []
+    [result.append(i) for i in List if not i in result]
+    return result
+
+
+def check_obstacle(map_array, pos, index, dis):
+    """
+    检测单元角点上下左右1个dis内是否有障碍物
+    :param map_array: 要提取角点的图片
+    :param pos: 要检测的点的坐标当前角点位置，0-左下，1-右下，2-左上，3右上
+    :param index: 要检测的点的坐标
+    :param dis: 距离范围
+    :return: True-有障碍物，False-没有障碍物
+    """
+    if pos == 0:
+        n = 1
+        while n < dis:
+            if map_array[index[0], index[1] + n] == 0 or map_array[index[0] + n, index[1]] == 0:
+                return True
+            else:
+                n = n + 1
+        return False
+    elif pos == 1:
+        n = 1
+        while n < dis:
+            if map_array[index[0], index[1] - n] == 0 or map_array[index[0] + n, index[1]] == 0:
+                return True
+            else:
+                n = n + 1
+        return False
+    elif pos == 2:
+        n = 1
+        while n < dis:
+            if map_array[index[0], index[1] + n] == 0 or map_array[index[0] - n, index[1]] == 0:
+                return True
+            else:
+                n = n + 1
+        return False
+    elif pos == 3:
+        n = 1
+        while n < dis:
+            if map_array[index[0], index[1] - n] == 0 or map_array[index[0] - n, index[1]] == 0:
+                return True
+            else:
+                n = n + 1
+        return False
+
+
+def check_obs_for_path_point(map_array, x, y, dis):
+    """
+    检测单元角点上下左右1个dis内是否有障碍物
+    :param map_array: 要提取角点的图片
+    :param x: 要检测的点的横坐标
+    :param y: 要检测的点的纵坐标
+    :param dis: 距离范围
+    :return: True-有障碍物，False-没有障碍物
+    """
+    n = 1
+    while n < dis:
+        if map_array[x, y + n] == 0 or map_array[x + n, y] == 0 or map_array[x - n, y] == 0 or map_array[x, y - n] == 0:
+            return True
+        else:
+            n = n + 1
+    return False

@@ -132,7 +132,7 @@ def display_separate_map(separate_map, cells, centerx, centery, nodes):
     plt.imshow(display_img)
     plt.xlim(0, BOARD_WIDTH)
     plt.ylim(0, BOARD_HEIGHT)
-    plt.axis('off')
+    # plt.axis('off')
     for i in range(len(nodes)):
         plt.scatter(centerx[i], centery[i], marker='o', color='g')
         plt.annotate('cell{}'.format(i+1), xy=(centerx[i], centery[i]))
@@ -142,7 +142,7 @@ def display_separate_map(separate_map, cells, centerx, centery, nodes):
             y = [centery[node], centery[nodes[index+1]]]
             plt.plot(x, y, color='r')
     plt.show()
-    plt.cla()
+    # plt.cla()
 
 
 def find_dist(x1, y1, x2, y2):

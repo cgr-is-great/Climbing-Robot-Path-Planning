@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-
-
 import time
 import sys
 import numpy as np
@@ -24,7 +22,6 @@ class VideoBox(MainForm):
     STATUS_INIT = 0
     STATUS_PLAYING = 1
     STATUS_PAUSE = 2
-
     video_url = ""
 
     def __init__(self, video_type=VIDEO_TYPE_OFFLINE, auto_play=False):
@@ -33,7 +30,6 @@ class VideoBox(MainForm):
         self.video_type = video_type                # 0: offline    1: realTime
         self.auto_play = auto_play
         self.status = self.STATUS_INIT              # 0: init   1:playing   2: pause
-
         # 组件展示
         self.pictureLabel = QLabel()
         # init_image = QPixmap("test11C_Moment.jpg").scaled(432, 768)
@@ -114,15 +110,13 @@ class VideoBox(MainForm):
         main_frame = QWidget()
         main_frame.setLayout(layout)
         self.setCentralWidget(main_frame)
-        
         self.filepath_signal.connect(self.video_playing)
-    
+
     def video_playing(self, video_url):
         self.video_url = video_url
         # timer 设置
         self.timer = VideoTimer()
         self.timer.timeSignal.signal[str].connect(self.show_video_images)
-
         # video 初始设置
         self.playCapture = VideoCapture()
         if self.video_url != "":
@@ -133,20 +127,19 @@ class VideoBox(MainForm):
             if self.auto_play:
                 self.switch_video()
             # self.videoWriter = VideoWriter('*.mp4', VideoWriter_fourcc('M', 'J', 'P', 'G'), self.fps, size)
-        
         self.SrcPointsA = PerspectiveTransform_get(self.video_url)
 
         Sizeget = Size_get()
         Sizeget.setWindowModality(Qt.ApplicationModal)
         Sizeget.exec_()
-     
+
         self.BHeight = Sizeget.BHeight
         self.BWidth = Sizeget.BWidth
-        
+
         if self.BHeight/self.BWidth > 1920/1080:        
-            CanvasPointsA=np.array([[1800,100],[100,100],[1800,100+1700*Sizeget.BWidth/Sizeget.BHeight],[100,100+1700*Sizeget.BWidth/Sizeget.BHeight]],np.float32)
+            CanvasPointsA = np.array([[1800,100],[100,100],[1800,100+1700*Sizeget.BWidth/Sizeget.BHeight],[100,100+1700*Sizeget.BWidth/Sizeget.BHeight]],np.float32)
             self.PerspectiveMatrix = cv2.getPerspectiveTransform(self.SrcPointsA, CanvasPointsA)
-            self.Base='Height'
+            self.Base = 'Height'
         else:
             CanvasPointsA=np.array([[1800,100],[1800-900*Sizeget.BHeight/Sizeget.BWidth,100],[1800,1000],[1800-900*Sizeget.BHeight/Sizeget.BWidth,1000]],np.float32)
             self.PerspectiveMatrix = cv2.getPerspectiveTransform(self.SrcPointsA, CanvasPointsA)
@@ -157,14 +150,14 @@ class VideoBox(MainForm):
         self.playCapture.release()
         self.status = VideoBox.STATUS_INIT
         self.playButton.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
-#        LocationDetection.FirstM = True
+        # LocationDetection.FirstM = True
 
     def show_video_images(self):
         if self.playCapture.isOpened():
             success, frame = self.playCapture.read()
             frameinital = copy.deepcopy(frame)
             if success:                
-                frame=np.rot90(frame,-1)
+                frame=np.rot90(frame, -1)
                 frame = cv2.resize(frame, (0, 0), fx=0.4, fy=0.4, interpolation=cv2.INTER_CUBIC)
                 height, width = frame.shape[:2]
                 if frame.ndim == 3:
@@ -172,12 +165,12 @@ class VideoBox(MainForm):
                 elif frame.ndim == 2:
                     rgb = cvtColor(frame, COLOR_GRAY2BGR)
                     
-                temp_image = QImage(rgb.flatten(),width , height, QImage.Format_RGB888)
+                temp_image = QImage(rgb.flatten(), width, height, QImage.Format_RGB888)
                 temp_pixmap = QPixmap.fromImage(temp_image)
                 self.pictureLabel.setPixmap(temp_pixmap)
                 
                 frame = copy.deepcopy(frameinital)
-                frameL,self.X,self.Y,self.ANGLE=LocationDetection(self.PerspectiveMatrix,frame,self.BHeight,self.BWidth,self.Base)
+                frameL, self.X, self.Y, self.ANGLE = LocationDetection(self.PerspectiveMatrix, frame, self.BHeight, self.BWidth, self.Base)
                 frameL = cv2.resize(frameL, (0, 0), fx=0.4, fy=0.4, interpolation=cv2.INTER_CUBIC)
                 height, width = frameL.shape[:2]
                 if frameL.ndim == 3:
@@ -201,10 +194,9 @@ class VideoBox(MainForm):
                 temp_pixmapT = QPixmap.fromImage(temp_imageT)
                 self.pictureLabelT.setPixmap(temp_pixmapT)
 
-                self.resultxLabel.setText("X(cm)：%d"%self.X)
-                self.resultyLabel.setText("Y(cm)：%d"%self.Y)
-                self.resultaLabel.setText("Angle(°)：%.2f"%self.ANGLE)
-                    
+                self.resultxLabel.setText("X(cm)：%d" % self.X)
+                self.resultyLabel.setText("Y(cm)：%d" % self.Y)
+                self.resultaLabel.setText("Angle(°)：%.2f" % self.ANGLE)
             else:
                 print("read failed, no frame data")
                 success, frame = self.playCapture.read()
@@ -245,7 +237,6 @@ class Communicate(QObject):
 
 
 class VideoTimer(QThread):
-
     def __init__(self, frequent=20):
         QThread.__init__(self)
         self.stopped = False

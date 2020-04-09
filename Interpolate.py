@@ -258,7 +258,6 @@ def Interpolate_Rec_Lines(trajectory_rec, trajectory_lines, trajectory_flag):
             t_temp.append([x_draw_rec[i][j], y_draw_rec[i][j]])
         t_pred_rec.append(t_temp)
         t_temp = []
-
     t_temp = []
     for i in range(len(trajectory_flag)):
         if i == 0:

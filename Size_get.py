@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Sep 24 21:10:40 2018
-
 @author: pc
 """
 
@@ -14,7 +13,6 @@ import sys
 class Size_get(QDialog):  
     def __init__(self ):  
         super().__init__()
-         
         self.setWindowTitle('投影视平面尺寸')
         nameLb1 = QLabel('&高度(米)', self)
         self.nameEd1 = QLineEdit(self)
